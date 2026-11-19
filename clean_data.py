@@ -4,6 +4,7 @@
 #
 # How to run (from the project folder):  python clean_data.py
 
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -89,6 +90,23 @@ df["brand"] = df["brand_original"].str.strip().replace(brand_map)
 
 # Model names: remove extra spaces and use capital letters (the file mixes both)
 df["model"] = df["model"].str.strip().str.upper()
+
+
+# The same car appears under several names ("BEAT" and "BEAT 4 PTAS.", "AVEO-" and
+# "AVEO HB", "KIA K3 SEDÁN" and "KIA K3 HATCHBACK"). model_family groups those variants
+# so a car's sales are not split into pieces. The original name stays in the "model" column.
+def model_family(name, brand):
+    name = re.sub(r"[\s\-/]+$", "", name)                       # trailing hyphens and spaces
+    # body-style words (sedan, hatchback, 4 doors...) are not part of the car's name
+    name = re.sub(r"\b(SEDÁN|SEDAN|HATCHBACK|HB|SUV|[345] ?PTAS\.?|DC|CREW CAB)\b\.?", "", name)
+    name = re.sub(r"^(NUEVO|NUEVA|NEW)\s+", "", name)             # "NUEVO JETTA" is the Jetta
+    for prefix in (brand.upper() + " ", "VOLKSWAGEN ", "KIA "):   # "KIA K3" -> "K3"
+        if name.startswith(prefix) and len(name) > len(prefix):
+            name = name[len(prefix):]
+    return re.sub(r"\s+", " ", name).strip(" -")
+
+
+df["model_family"] = [model_family(m, b) for m, b in zip(df["model"], df["brand"])]
 
 # ---------------------------------------------------------------
 # 7. Add the country name of the vehicle origin
@@ -190,7 +208,7 @@ assert df["status"].notna().all(), "Unknown status label"
 # 11. Save the clean files
 # ---------------------------------------------------------------
 columns = [
-    "date", "year", "month", "brand", "brand_original", "model", "vehicle_type",
+    "date", "year", "month", "brand", "brand_original", "model", "model_family", "vehicle_type",
     "segment", "origin", "origin_country", "units", "status", "stable_brand",
 ]
 df = df[columns].sort_values(["date", "brand", "model"]).reset_index(drop=True)
